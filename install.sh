@@ -15,15 +15,7 @@ fi
 
 # Check if running in interactive mode (no arguments)
 if [[ $# -eq 0 ]]; then
-  if [[ -f "${REPO_DIR}/bin/interactive-mode.sh" ]]; then
-    source "${REPO_DIR}/bin/interactive-mode.sh"
-    exec < /dev/tty
-    interactive_mode
-    exit 0
-  else
-    echo "Error: Interactive mode script not found at ${REPO_DIR}/bin/interactive-mode.sh"
-    exit 1
-  fi
+  INTERACTIVE_MODE="true"
 fi
 
 usage() {
@@ -461,6 +453,18 @@ while [[ "$#" -gt 0 ]]; do
   esac
 done
 
+# Run interactive mode if enabled
+if [[ "$INTERACTIVE_MODE" == "true" ]]; then
+  if [[ -f "${REPO_DIR}/bin/interactive-mode.sh" ]]; then
+    source "${REPO_DIR}/bin/interactive-mode.sh"
+    exec < /dev/tty
+    interactive_mode
+  else
+    echo "Error: Interactive mode script not found at ${REPO_DIR}/bin/interactive-mode.sh"
+    exit 1
+  fi
+fi
+
 if [[ "${#themes[@]}" -eq 0 ]] ; then
   themes=("${THEME_VARIANTS[0]}")
 fi
@@ -475,12 +479,6 @@ fi
 
 if [[ "${#lcolors[@]}" -eq 0 ]] ; then
   lcolors=("${COLOR_VARIANTS[1]}")
-fi
-
-# Run interactive mode if enabled
-if [[ "$INTERACTIVE_MODE" == "true" ]]; then
-  source "${REPO_DIR}/interactive-mode.sh"
-  interactive_mode
 fi
 
 if [[ ${remove} == 'true' ]]; then
