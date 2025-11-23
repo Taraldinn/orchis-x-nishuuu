@@ -68,7 +68,9 @@ cd "$INSTALL_DIR"
 chmod +x install.sh
 
 # Pass any arguments to the installer
-./install.sh "$@"
+# Pass any arguments to the installer
+# Force reading from /dev/tty to allow interactive input when running via pipe
+./install.sh "$@" < /dev/tty
 
 # Cleanup
 echo -e "\n${BLUE}Cleaning up...${NC}"
