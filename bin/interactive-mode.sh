@@ -1,7 +1,7 @@
 # Interactive installation mode
 # This file is sourced by install.sh when running in interactive mode
 
-source "${REPO_DIR}/interactive.sh"
+source "${REPO_DIR}/bin/interactive.sh"
 
 interactive_mode() {
   # Display welcome header

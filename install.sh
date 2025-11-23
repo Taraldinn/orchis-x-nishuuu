@@ -1,13 +1,28 @@
+
 #! /usr/bin/env bash
 
-REPO_DIR="$(dirname "$(readlink -m "${0}")")"
-source "${REPO_DIR}/core.sh"
+if [[ -x "$(command -v git)" && -d "${0%/*}/.git" ]]; then
+  REPO_DIR="$(dirname "$(readlink -f "$0")")"
+elif [[ -f "${0%/*}/bin/core.sh" ]]; then
+  REPO_DIR="$(dirname "$(readlink -f "$0")")"
+else
+  echo "Error: Could not find project root"
+  exit 1
+fi
+
+# Source core functions
+. "${REPO_DIR}/bin/core.sh"
 
 # Check if running in interactive mode (no arguments)
 if [[ $# -eq 0 ]]; then
-  INTERACTIVE_MODE="true"
-else
-  INTERACTIVE_MODE="false"
+  if [[ -f "${REPO_DIR}/bin/interactive-mode.sh" ]]; then
+    source "${REPO_DIR}/bin/interactive-mode.sh"
+    start_interactive_mode
+    exit 0
+  else
+    echo "Error: Interactive mode script not found at ${REPO_DIR}/bin/interactive-mode.sh"
+    exit 1
+  fi
 fi
 
 usage() {

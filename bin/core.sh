@@ -2,7 +2,7 @@
 REPO_DIR="$(dirname "$(readlink -m "${0}")")"
 SRC_DIR="$REPO_DIR/src"
 
-source "${REPO_DIR}/gtkrc.sh"
+source "${REPO_DIR}/bin/gtkrc.sh"
 
 ROOT_UID=0
 DEST_DIR=
@@ -629,8 +629,8 @@ link_theme() {
 }
 
 install_auto_switch() {
-  local SCRIPT_SRC="${REPO_DIR}/scripts/orchis-theme-switcher.py"
-  local SERVICE_SRC="${REPO_DIR}/scripts/orchis-theme-switcher.service"
+  local SCRIPT_SRC="${REPO_DIR}/bin/orchis-theme-switcher.py"
+  local SERVICE_SRC="${REPO_DIR}/bin/orchis-theme-switcher.service"
   local BIN_DIR="${MY_HOME}/.local/bin"
   local SCRIPT_DEST="${BIN_DIR}/orchis-theme-switcher.py"
   local SYSTEMD_DIR="${MY_HOME}/.config/systemd/user"
