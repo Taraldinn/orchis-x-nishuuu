@@ -17,7 +17,7 @@ fi
 if [[ $# -eq 0 ]]; then
   if [[ -f "${REPO_DIR}/bin/interactive-mode.sh" ]]; then
     source "${REPO_DIR}/bin/interactive-mode.sh"
-    start_interactive_mode
+    interactive_mode
     exit 0
   else
     echo "Error: Interactive mode script not found at ${REPO_DIR}/bin/interactive-mode.sh"
