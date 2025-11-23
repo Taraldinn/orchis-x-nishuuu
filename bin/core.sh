@@ -68,7 +68,9 @@ install() {
   echo "Installing '$THEME_DIR'..."
 
   mkdir -p                                                                                   "$THEME_DIR"
-  cp -r "$REPO_DIR/COPYING"                                                                  "$THEME_DIR"
+  if [[ -f "$REPO_DIR/COPYING" ]]; then
+    cp -r "$REPO_DIR/COPYING" "$THEME_DIR"
+  fi
 
   echo "[Desktop Entry]" >>                                                                  "$THEME_DIR/index.theme"
   echo "Type=X-GNOME-Metatheme" >>                                                           "$THEME_DIR/index.theme"
