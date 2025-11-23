@@ -1,0 +1,14 @@
+[Unit]
+Description=Orchis Theme Automatic Switcher
+Documentation=https://github.com/vinceliuice/Orchis-theme
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/orchis-theme-switcher.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

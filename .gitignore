@@ -1,0 +1,44 @@
+.DS_store
+.sass-cache
+*-temp.scss
+.vscode
+src/cinnamon/*.css
+src/gnome-shell/*/*.css
+src/gtk/*/*.css
+
+# Temporary files
+*.tmp
+*.bak
+*~
+.DS_Store
+
+# Build artifacts
+*.o
+*.so
+*.dylib
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test files
+test/
+tests/
+
+# Logs
+*.log
+
+# System files
+Thumbs.db
+.directory
+
+# Backup themes during development
+backup/
+
+# Downloaded Tela source (users will download during install)
+Tela-icon-theme-master/
+
+# Gemini artifacts (development notes)
+.gemini/
