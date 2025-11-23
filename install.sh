@@ -506,12 +506,12 @@ else
     fix_dash_to_dock
   fi
 
-  if [[ "$autoswitch" == 'true' ]]; then
-    install_auto_switch
-  fi
-  
   if [[ "$tela_icons" == 'true' ]]; then
     install_tela_icons
+  fi
+
+  if [[ "$autoswitch" == 'true' ]]; then
+    install_auto_switch
   fi
 fi
 
