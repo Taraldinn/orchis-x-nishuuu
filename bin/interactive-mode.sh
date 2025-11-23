@@ -3,6 +3,43 @@
 
 source "${REPO_DIR}/bin/interactive.sh"
 
+CONFIG_FILE="$HOME/.config/orchis-installer.conf"
+
+# Save configuration to file
+save_config() {
+  mkdir -p "$(dirname "$CONFIG_FILE")"
+  
+  cat > "$CONFIG_FILE" << EOF
+# Orchis Theme Installer Configuration
+selected_themes="${selected_themes[*]}"
+selected_colors="${selected_colors[*]}"
+selected_sizes="${selected_sizes[*]}"
+selected_icon="${selected_icon}"
+selected_tweaks="${selected_tweaks[*]}"
+install_autoswitch="${install_autoswitch}"
+install_libadwaita="${install_libadwaita}"
+install_fixed="${install_fixed}"
+install_tela="${install_tela}"
+corner_radius="${corner_radius}"
+EOF
+}
+
+# Load configuration from file
+load_config() {
+  if [[ -f "$CONFIG_FILE" ]]; then
+    source "$CONFIG_FILE"
+    
+    # Convert string arrays back to arrays
+    IFS=' ' read -r -a selected_themes <<< "$selected_themes"
+    IFS=' ' read -r -a selected_colors <<< "$selected_colors"
+    IFS=' ' read -r -a selected_sizes <<< "$selected_sizes"
+    IFS=' ' read -r -a selected_tweaks <<< "$selected_tweaks"
+    
+    return 0
+  fi
+  return 1
+}
+
 interactive_mode() {
   # Display welcome header
   print_header
@@ -26,6 +63,21 @@ interactive_mode() {
   install_fixed="false"
   install_tela="false"
   corner_radius=""
+
+  # Check for previous configuration
+  if [[ -f "$CONFIG_FILE" ]]; then
+    echo -e "\n${BLUE}Previous installation settings found!${NC}"
+    if confirm "Quick Install (Load previous settings)?" "y"; then
+      load_config
+      print_success "Settings loaded"
+      print_summary
+      
+      if confirm "Proceed with installation?" "y"; then
+        build_install_args
+        return 0
+      fi
+    fi
+  fi
   
   # 1. Theme Color Variants
   print_section "1. Theme Color Variants"
@@ -172,6 +224,9 @@ interactive_mode() {
     echo -e "\n${YELLOW}Installation cancelled.${NC}"
     exit 0
   fi
+  
+  # Save configuration
+  save_config
   
   # Build command-line arguments from selections
   build_install_args
