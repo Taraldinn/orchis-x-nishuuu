@@ -17,6 +17,7 @@ fi
 if [[ $# -eq 0 ]]; then
   if [[ -f "${REPO_DIR}/bin/interactive-mode.sh" ]]; then
     source "${REPO_DIR}/bin/interactive-mode.sh"
+    exec < /dev/tty
     interactive_mode
     exit 0
   else
