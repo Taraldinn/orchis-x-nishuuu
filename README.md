@@ -26,7 +26,22 @@ A beautifully enhanced version of the Orchis GTK theme with comprehensive automa
 
 ## 📦 Installation
 
-### Quick Install (Interactive)
+### ⚡ One-Line Install (Recommended)
+Copy and paste this command into your terminal:
+
+```bash
+curl -sL https://raw.githubusercontent.com/Taraldinn/orchis-x-nishuuu/master/setup.sh | bash
+```
+
+This will:
+1. Install necessary dependencies (sassc)
+2. Download the theme files
+3. Launch the interactive installer
+4. Clean up temporary files automatically
+
+### Manual Install
+If you prefer to clone the repository manually:
+
 ```bash
 git clone https://github.com/Taraldinn/orchis-x-nishuuu.git
 cd orchis-x-nishuuu
