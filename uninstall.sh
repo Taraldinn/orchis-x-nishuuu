@@ -29,7 +29,7 @@ echo "  • Orchis theme switcher service"
 echo "  • libadwaita (GTK4) symlinks"
 echo ""
 
-read -p "Continue with uninstall? [y/N]: " -n 1 -r
+read -p "Continue with uninstall? [y/N]: " -n 1 -r < /dev/tty
 echo ""
 
 if [[ ! $REPLY =~ ^[Yy]$ ]]; then
