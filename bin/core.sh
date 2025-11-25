@@ -550,7 +550,11 @@ fix_dash_to_dock() {
   fi
 
   if has_command dbus-launch; then
+    # Enable custom theme for Dash to Dock
     dbus-launch dconf write /org/gnome/shell/extensions/dash-to-dock/apply-custom-theme true
+    
+    # Enable custom theme for Ubuntu Dock (used in Ubuntu by default)
+    dbus-launch dconf write /org/gnome/shell/extensions/ubuntu-dock/apply-custom-theme true
   fi
 }
 

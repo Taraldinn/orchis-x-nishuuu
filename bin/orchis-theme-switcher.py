@@ -55,6 +55,32 @@ GTK4_CONFIG_DIR = Path.home() / '.config' / 'gtk-4.0'
 THEMES_DIR = Path.home() / '.themes'
 
 
+def detect_theme_suffix():
+    """Detect if themes were installed with a suffix like -Dracula or -Nord."""
+    themes_dir = THEMES_DIR
+    if not themes_dir.exists():
+        return ''
+    
+    # Look for a standard Orchis theme to detect suffix
+    # Check for common variants
+    test_variants = [
+        'Orchis-Dark-Dracula',
+        'Orchis-Light-Dracula',
+        'Orchis-Dark-Nord',
+        'Orchis-Light-Nord',
+    ]
+    
+    for variant in test_variants:
+        if (themes_dir / variant).exists():
+            if '-Dracula' in variant:
+                return '-Dracula'
+            elif '-Nord' in variant:
+                return '-Nord'
+    
+    # No suffix found (standard installation)
+    return ''
+
+
 class OrchisThemeSwitcher:
     """Monitors color-scheme and accent-color changes and switches themes accordingly."""
     
@@ -63,6 +89,10 @@ class OrchisThemeSwitcher:
         self.interface_settings = None
         self.shell_settings = None
         self.current_accent = 'blue'  # Default accent color
+        self.theme_suffix = detect_theme_suffix()  # Auto-detect theme suffix
+        
+        if self.theme_suffix:
+            print(f"Detected theme suffix: {self.theme_suffix}")
         
         # Initialize GSettings for interface
         try:
@@ -106,9 +136,9 @@ class OrchisThemeSwitcher:
         # Get accent variant (empty string for default blue)
         accent_variant = ACCENT_MAP.get(accent_color, '')
         
-        # Build theme name: Orchis + accent-variant + mode-suffix
-        # Examples: "Orchis-Purple-dark", "Orchis-light" (default blue)
-        theme_name = f"Orchis{accent_variant}{mode_suffix}"
+        # Build theme name: Orchis + accent-variant + mode-suffix + theme-suffix
+        # Examples: "Orchis-Purple-Dark-Dracula", "Orchis-Light" (standard)
+        theme_name = f"Orchis{accent_variant}{mode_suffix}{self.theme_suffix}"
         
         return theme_name
     
@@ -124,10 +154,11 @@ class OrchisThemeSwitcher:
         color_variant = TELA_ICON_MAP.get(accent_color, '')
         
         # Build icon theme name: Tela + color-variant + mode-suffix
-        # Examples: "Tela-purple-dark", "Tela-light" (standard blue)
-        # Special case: standard color with just brightness
+        # Examples: "Tela-purple-dark", "Tela-blue-light" (standard blue)
+        # Special case: standard color (blue) - use blue variant as fallback
         if not color_variant:
-            # Standard color: Tela-dark or Tela-light
+            # Standard color: Try Tela-dark/light first, fall back to Tela-blue-dark/light
+            # We'll check existence in apply_icon_theme
             icon_theme_name = f"Tela{mode_suffix}"
         else:
             # Colored variant: Tela-purple-dark
@@ -156,6 +187,17 @@ class OrchisThemeSwitcher:
                 # Check if theme exists (check in user's icons directory)
                 icon_path = Path.home() / '.local/share/icons' / icon_theme_name
                 print(f"[ICON] Checking icon path: {icon_path}", flush=True)
+                
+                # Fallback for standard Tela variants (blue)
+                if not icon_path.exists() and icon_theme_name in ['Tela-dark', 'Tela-light']:
+                    # Try blue variant as fallback
+                    fallback_name = icon_theme_name.replace('Tela-', 'Tela-blue-')
+                    fallback_path = Path.home() / '.local/share/icons' / fallback_name
+                    if fallback_path.exists():
+                        print(f"[ICON] Fallback: Using {fallback_name} instead", flush=True)
+                        icon_theme_name = fallback_name
+                        icon_path = fallback_path
+                
                 if not icon_path.exists():
                     print(f"Warning: Icon theme {icon_theme_name} not installed at {icon_path}", flush=True)
                     return False

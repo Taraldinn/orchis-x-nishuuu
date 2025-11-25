@@ -150,25 +150,124 @@ Or run the sync script manually:
 ~/.local/bin/sync-icon-theme.sh
 ```
 
-### Service Not Running
-Restart the auto-switcher:
-```bash
-systemctl --user restart orchis-theme-switcher.service
+## 🔧 Advanced Features
+
+### Quick Installation
+
+After your first installation, the installer remembers your preferences in `~/.config/orchis-installer.conf`.
+
+The next time you run the installer, you'll see:
 ```
+Quick Install (Load previous settings)? [Y/n]:
+```
+
+Select **Yes** to instantly reinstall with your exact same choices!
+
+### Dracula & Nord Colorscheme Support
+
+If you install with the **Dracula** or **Nord** tweak enabled, the auto-switcher automatically detects the suffix and applies themes correctly.
+
+**Note**: Dracula uses a fixed color palette, so all accent colors will appear similar (bluish/slate) in the UI. This is intentional Dracula behavior. If you want distinct accent color variations, reinstall without the Dracula tweak.
+
+### Ubuntu Dock Theme Integration
+
+The installer automatically supports both Dash to Dock and Ubuntu Dock extensions:
+- Backs up original dock stylesheet
+- Removes it so the theme stylesheet applies
+- Enables custom theme setting
+
+**After installation**, reload GNOME Shell to see dock theming:
+- Press **Alt + F2**, type `r`, press Enter
+- Or log out and log back in
+
+**To restore original dock styling**:
+```bash
+sudo mv /usr/share/gnome-shell/extensions/ubuntu-dock@ubuntu.com/stylesheet.css.bak \
+       /usr/share/gnome-shell/extensions/ubuntu-dock@ubuntu.com/stylesheet.css
+```
+
+## 🐛 Troubleshooting
+
+### Accent Colors All Look the Same
+
+**Cause**: You installed with the Dracula or Nord colorscheme, which uses a fixed color palette.
+
+**Solution**: Reinstall without the Dracula/Nord tweak:
+1. Run the uninstaller: `curl -sL https://raw.githubusercontent.com/Taraldinn/orchis-x-nishuuu/master/uninstall.sh | bash`
+2. Run the installer again
+3. When selecting tweaks, skip Dracula and Nord (select only: compact, macos, submenu, dock)
+
+### Ubuntu Dock Not Using Theme
+
+**Symptoms**: The dock still looks default even after installation.
+
+**Solution**:
+1. Check if custom theme is enabled:
+   ```bash
+   dconf read /org/gnome/shell/extensions/ubuntu-dock/apply-custom-theme
+   ```
+   Should return `true`. If not:
+   ```bash
+   dconf write /org/gnome/shell/extensions/ubuntu-dock/apply-custom-theme true
+   ```
+
+2. Remove the original stylesheet (it's already backed up):
+   ```bash
+   sudo rm /usr/share/gnome-shell/extensions/ubuntu-dock@ubuntu.com/stylesheet.css
+   ```
+
+3. Reload GNOME Shell: **Alt + F2** → type `r` → Enter
+
+### Icons Not Changing with Accent Colors
+
+**Cause**: Standard Tela-dark/Tela-light icons are missing.
+
+**Solution**: The auto-switcher automatically falls back to Tela-blue-dark/Tela-blue-light. This is normal and works correctly.
+
+### Themes Not Switching Automatically
+
+**Check service status**:
+```bash
+systemctl --user status orchis-theme-switcher
+```
+
+**View logs**:
+```bash
+journalctl --user -u orchis-theme-switcher -f
+```
+
+**Restart service**:
+```bash
+systemctl --user restart orchis-theme-switcher
+```
+
+### Snap Theme Notifications
+
+When switching themes, you may see notifications about installing snap themes. These are harmless.
+
+**To install snap theme support**:
+```bash
+sudo snap install gtk-common-themes
+sudo snap install gnome-42-2204  # Or your GNOME version
+```
+
+**To check if you use snaps**:
+```bash
+snap list
+```
+
+If you don't use snap applications, you can safely ignore these notifications.
+
+## 📚 Additional Documentation
+
+- [Auto-Switcher Details](docs/README-AUTO-SWITCH.md) - Comprehensive auto-switcher documentation
+- [Interactive Mode Guide](docs/README-INTERACTIVE.md) - Interactive installer usage
 
 ## 🙏 Credits
 
-### Original Work
-- **Orchis Theme**: [vinceliuice/Orchis-theme](https://github.com/vinceliuice/Orchis-theme)
-- **Tela Icons**: [vinceliuice/Tela-icon-theme](https://github.com/vinceliuice/Tela-icon-theme)
-
-### Enhanced by Nishuuu
-- Tela icon integration and automatic switching
-- Brown accent color support
-- Enhanced debugging and logging
-- Interactive installation system
-- Complete uninstaller
-- Comprehensive documentation
+- **Original Theme**: [Orchis Theme](https://github.com/vinceliuice/Orchis-theme) by vinceliuice
+- **Icon Theme**: [Tela Icon Theme](https://github.com/vinceliuice/Tela-icon-theme) by vinceliuice
+- **Enhancements**: Nishuuu (Taraldinn)
 
 ## 📄 License
 

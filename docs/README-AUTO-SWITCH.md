@@ -220,6 +220,24 @@ Make sure you've installed the Orchis color variants:
 
 If you installed Orchis with custom options (e.g., compact size, tweaks), the theme names may differ. Edit `~/.local/bin/orchis-theme-switcher.py` and modify the `ACCENT_MAP` or theme building logic.
 
+### Dracula/Nord Variant Support
+
+The auto-switcher **automatically detects** if you installed with Dracula or Nord tweaks and applies the correct suffix.
+
+**How it works**:
+1. On startup, the switcher checks `~/.themes/` for installed Orchis variants
+2. If it finds themes with `-Dracula` or `-Nord` suffix, it automatically uses that suffix
+3. Logs will show: `Detected theme suffix: -Dracula`
+
+**Example**:
+- Installed with Dracula tweak: `Orchis-Purple-Dark-Dracula`
+- Installed with Nord tweak: `Orchis-Purple-Dark-Nord`
+- Standard installation: `Orchis-Purple-Dark`
+
+**Note**: Dracula colorscheme uses a fixed color palette, so all accent colors will appear visually similar (bluish/slate) in the UI. This is intentional Dracula behavior - the themes ARE switching (check logs), but they look similar due to Dracula's design.
+
+To see distinct accent color variations, reinstall without the Dracula/Nord tweak.
+
 ### Accent colors not working
 
 **Check GNOME version**:
