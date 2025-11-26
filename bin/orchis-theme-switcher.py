@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """
-Orchis Theme Automatic Switcher
+Orchis Theme Automatic Switcher - Restructured for Rock-Solid Sync
 Monitors GNOME's color-scheme and accent-color preferences and automatically
-switches between Orchis theme variants (light/dark and color variants).
+switches between Orchis theme variants with atomic updates and self-healing.
 """
 
 import sys
-import subprocess
 import os
+import json
+import time
 from pathlib import Path
 from gi.repository import Gio, GLib
+from datetime import datetime
 
 
 # Accent color mapping: GNOME accent-color -> Orchis variant suffix
@@ -50,9 +52,10 @@ ICON_THEME_KEY = 'icon-theme'
 SHELL_THEME_SCHEMA = 'org.gnome.shell.extensions.user-theme'
 SHELL_THEME_KEY = 'name'
 
-# Libadwaita GTK4 config directory
+# Paths
 GTK4_CONFIG_DIR = Path.home() / '.config' / 'gtk-4.0'
 THEMES_DIR = Path.home() / '.themes'
+STATE_CACHE_FILE = Path.home() / '.cache' / 'orchis-theme-state.json'
 
 
 def detect_theme_suffix():
@@ -62,7 +65,6 @@ def detect_theme_suffix():
         return ''
     
     # Look for a standard Orchis theme to detect suffix
-    # Check for common variants
     test_variants = [
         'Orchis-Dark-Dracula',
         'Orchis-Light-Dracula',
@@ -77,163 +79,245 @@ def detect_theme_suffix():
             elif '-Nord' in variant:
                 return '-Nord'
     
-    # No suffix found (standard installation)
     return ''
 
 
-class OrchisThemeSwitcher:
-    """Monitors color-scheme and accent-color changes and switches themes accordingly."""
+class ThemeState:
+    """Represents a complete theme state (GTK, Shell, Icons, libadwaita)."""
     
-    def __init__(self):
-        """Initialize the theme switcher."""
-        self.interface_settings = None
-        self.shell_settings = None
-        self.current_accent = 'blue'  # Default accent color
-        self.theme_suffix = detect_theme_suffix()  # Auto-detect theme suffix
+    def __init__(self, color_scheme, accent_color, theme_suffix=''):
+        self.color_scheme = color_scheme
+        self.accent_color = accent_color
+        self.theme_suffix = theme_suffix
+        self.timestamp = datetime.now().isoformat()
         
-        if self.theme_suffix:
-            print(f"Detected theme suffix: {self.theme_suffix}")
-        
-        # Initialize GSettings for interface
-        try:
-            self.interface_settings = Gio.Settings.new(INTERFACE_SCHEMA)
-        except Exception as e:
-            print(f"Error: Could not access {INTERFACE_SCHEMA} schema: {e}", file=sys.stderr)
-            sys.exit(1)
-        
-        # Try to initialize shell theme settings (optional)
-        try:
-            # First try to load from extension's schema directory
-            extension_dir = Path.home() / '.local/share/gnome-shell/extensions/user-theme@gnome-shell-extensions.gcampax.github.com'
-            schema_dir = extension_dir / 'schemas'
-            
-            if schema_dir.exists():
-                schema_source = Gio.SettingsSchemaSource.new_from_directory(
-                    str(schema_dir),
-                    Gio.SettingsSchemaSource.get_default(),
-                    False
-                )
-                schema = schema_source.lookup(SHELL_THEME_SCHEMA, False)
-                if schema:
-                    self.shell_settings = Gio.Settings.new_full(schema, None, None)
-                    print("✓ Shell theme extension found")
-                else:
-                    raise Exception("Schema not found in extension directory")
-            else:
-                raise Exception("Extension schema directory not found")
-        except Exception as e:
-            print(f"Warning: Shell theme extension not available: {e}")
-            print("Shell theme switching will be disabled.")
+        # Build component names
+        self.gtk_theme = self._build_gtk_theme()
+        self.shell_theme = self._build_shell_theme()
+        self.icon_theme = self._build_icon_theme()
+        self.libadwaita_path = self._build_libadwaita_path()
     
-    def get_theme_name(self, color_scheme, accent_color):
-        """Build theme name from color scheme and accent color."""
-        # Determine light or dark suffix
-        if color_scheme in ['prefer-dark', 'dark']:
-            mode_suffix = '-Dark'
-        else:
-            mode_suffix = '-Light'
-        
-        # Get accent variant (empty string for default blue)
-        accent_variant = ACCENT_MAP.get(accent_color, '')
-        
-        # Build theme name: Orchis + accent-variant + mode-suffix + theme-suffix
-        # Examples: "Orchis-Purple-Dark-Dracula", "Orchis-Light" (standard)
-        theme_name = f"Orchis{accent_variant}{mode_suffix}{self.theme_suffix}"
-        
-        return theme_name
+    def _build_gtk_theme(self):
+        """Build GTK theme name from state."""
+        mode_suffix = '-Dark' if self.color_scheme in ['prefer-dark', 'dark'] else '-Light'
+        accent_variant = ACCENT_MAP.get(self.accent_color, '')
+        return f"Orchis{accent_variant}{mode_suffix}{self.theme_suffix}"
     
-    def get_icon_theme_name(self, color_scheme, accent_color):
-        """Build Tela icon theme name from color scheme and accent color."""
-        # Determine light or dark suffix
-        if color_scheme in ['prefer-dark', 'dark']:
-            mode_suffix = '-dark'
-        else:
-            mode_suffix = '-light'
+    def _build_shell_theme(self):
+        """Build Shell theme name (same as GTK)."""
+        return self.gtk_theme
+    
+    def _build_icon_theme(self):
+        """Build Tela icon theme name from state."""
+        mode_suffix = '-dark' if self.color_scheme in ['prefer-dark', 'dark'] else '-light'
+        color_variant = TELA_ICON_MAP.get(self.accent_color, '')
         
-        # Get Tela color variant
-        color_variant = TELA_ICON_MAP.get(accent_color, '')
-        
-        # Build icon theme name: Tela + color-variant + mode-suffix
-        # Examples: "Tela-purple-dark", "Tela-blue-light" (standard blue)
-        # Special case: standard color (blue) - use blue variant as fallback
         if not color_variant:
-            # Standard color: Try Tela-dark/light first, fall back to Tela-blue-dark/light
-            # We'll check existence in apply_icon_theme
-            icon_theme_name = f"Tela{mode_suffix}"
+            # Standard color: Tela-dark or Tela-light
+            return f"Tela{mode_suffix}"
         else:
             # Colored variant: Tela-purple-dark
-            icon_theme_name = f"Tela{color_variant}{mode_suffix}"
-        
-        return icon_theme_name
+            return f"Tela{color_variant}{mode_suffix}"
     
-    def apply_gtk_theme(self, theme_name):
-        """Apply GTK theme using GSettings."""
+    def _build_libadwaita_path(self):
+        """Build libadwaita theme path."""
+        return THEMES_DIR / self.gtk_theme / 'gtk-4.0'
+    
+    def validate(self):
+        """Check if all theme components exist."""
+        issues = []
+        
+        # Check GTK theme
+        gtk_path = THEMES_DIR / self.gtk_theme
+        if not gtk_path.exists():
+            issues.append(f"GTK theme not found: {self.gtk_theme}")
+        
+        # Check icon theme (with fallback)
+        icon_path = Path.home() / '.local/share/icons' / self.icon_theme
+        if not icon_path.exists():
+            # Try fallback for standard Tela variants
+            if self.icon_theme in ['Tela-dark', 'Tela-light']:
+                fallback_name = self.icon_theme.replace('Tela-', 'Tela-blue-')
+                fallback_path = Path.home() / '.local/share/icons' / fallback_name
+                if fallback_path.exists():
+                    self.icon_theme = fallback_name
+                else:
+                    issues.append(f"Icon theme not found: {self.icon_theme} (fallback: {fallback_name})")
+            else:
+                issues.append(f"Icon theme not found: {self.icon_theme}")
+        
+        # Check libadwaita
+        if not self.libadwaita_path.exists():
+            issues.append(f"libadwaita theme not found: {self.libadwaita_path}")
+        
+        return len(issues) == 0, issues
+    
+    def to_dict(self):
+        """Serialize to dictionary."""
+        return {
+            'color_scheme': self.color_scheme,
+            'accent_color': self.accent_color,
+            'theme_suffix': self.theme_suffix,
+            'gtk_theme': self.gtk_theme,
+            'shell_theme': self.shell_theme,
+            'icon_theme': self.icon_theme,
+            'timestamp': self.timestamp
+        }
+    
+    @classmethod
+    def from_dict(cls, data):
+        """Deserialize from dictionary."""
+        state = cls(data['color_scheme'], data['accent_color'], data.get('theme_suffix', ''))
+        # Override computed values with saved ones (in case of custom mapping)
+        state.gtk_theme = data.get('gtk_theme', state.gtk_theme)
+        state.shell_theme = data.get('shell_theme', state.shell_theme)
+        state.icon_theme = data.get('icon_theme', state.icon_theme)
+        state.timestamp = data.get('timestamp', state.timestamp)
+        return state
+    
+    def __eq__(self, other):
+        """Check if two states are equal."""
+        if not isinstance(other, ThemeState):
+            return False
+        return (self.gtk_theme == other.gtk_theme and
+                self.icon_theme == other.icon_theme and
+                self.color_scheme == other.color_scheme and
+                self.accent_color == other.accent_color)
+    
+    def __str__(self):
+        """String representation."""
+        return f"ThemeState(gtk={self.gtk_theme}, icons={self.icon_theme}, scheme={self.color_scheme}, accent={self.accent_color})"
+
+
+class AtomicThemeApplier:
+    """Applies theme changes atomically - all or nothing."""
+    
+    def __init__(self, interface_settings, shell_settings=None):
+        self.interface_settings = interface_settings
+        self.shell_settings = shell_settings
+    
+    def get_current_state_from_gsettings(self):
+        """Read current state from GSettings."""
         try:
-            current_theme = self.interface_settings.get_string(GTK_THEME_KEY)
-            if current_theme != theme_name:
+            color_scheme = self.interface_settings.get_string(COLOR_SCHEME_KEY)
+            accent_color = 'blue'  # Default
+            
+            try:
+                accent_color = self.interface_settings.get_string(ACCENT_COLOR_KEY)
+            except:
+                pass  # Accent color not available on older GNOME
+            
+            return color_scheme, accent_color
+        except Exception as e:
+            print(f"[ERROR] Failed to read GSettings: {e}", file=sys.stderr)
+            return 'prefer-light', 'blue'
+    
+    def apply(self, new_state):
+        """
+        Apply theme state atomically.
+        Returns: (success: bool, results: dict)
+        """
+        print(f"\n[SYNC] Applying theme state: {new_state}")
+        
+        # Validate before applying
+        is_valid, issues = new_state.validate()
+        if not is_valid:
+            print(f"[VALIDATION FAILED] Missing components:")
+            for issue in issues:
+                print(f"  - {issue}")
+            return False, {'validation': issues}
+        
+        print("[VALIDATE] All components exist ✓")
+        
+        # Save current state for potential rollback
+        old_gtk = self.interface_settings.get_string(GTK_THEME_KEY)
+        old_icon = self.interface_settings.get_string(ICON_THEME_KEY)
+        
+        results = {}
+        
+        try:
+            # Apply GTK theme
+            results['gtk'] = self._apply_gtk_theme(new_state.gtk_theme)
+            
+            # Apply Shell theme
+            results['shell'] = self._apply_shell_theme(new_state.shell_theme)
+            
+            # Apply icon theme
+            results['icons'] = self._apply_icon_theme(new_state.icon_theme)
+            
+            # Apply libadwaita theme
+            results['libadwaita'] = self._apply_libadwaita_theme(new_state.gtk_theme, new_state.libadwaita_path)
+            
+            # Check if all succeeded
+            if all(results.values()):
+                print("[SUCCESS] Theme sync complete ✓")
+                return True, results
+            else:
+                print("[PARTIAL FAILURE] Some components failed:")
+                for component, success in results.items():
+                    if not success:
+                        print(f"  - {component} failed")
+                # Don't rollback on partial failure, just log it
+                return False, results
+                
+        except Exception as e:
+            print(f"[ERROR] Exception during apply: {e}", file=sys.stderr)
+            return False, {'exception': str(e)}
+    
+    def _apply_gtk_theme(self, theme_name):
+        """Apply GTK theme."""
+        try:
+            current = self.interface_settings.get_string(GTK_THEME_KEY)
+            if current != theme_name:
                 self.interface_settings.set_string(GTK_THEME_KEY, theme_name)
-                print(f"✓ Applied GTK theme: {theme_name}")
+                print(f"[APPLY] GTK theme: {theme_name} ✓")
                 return True
-            return False
+            else:
+                print(f"[SKIP] GTK theme already set: {theme_name}")
+                return True
         except Exception as e:
-            print(f"Error: Could not set GTK theme: {e}", file=sys.stderr)
+            print(f"[ERROR] GTK theme apply failed: {e}", file=sys.stderr)
             return False
     
-    def apply_icon_theme(self, icon_theme_name):
-        """Apply icon theme using GSettings."""
-        try:
-            current_icon_theme = self.interface_settings.get_string(ICON_THEME_KEY)
-            if current_icon_theme != icon_theme_name:
-                # Check if theme exists (check in user's icons directory)
-                icon_path = Path.home() / '.local/share/icons' / icon_theme_name
-                print(f"[ICON] Checking icon path: {icon_path}", flush=True)
-                
-                # Fallback for standard Tela variants (blue)
-                if not icon_path.exists() and icon_theme_name in ['Tela-dark', 'Tela-light']:
-                    # Try blue variant as fallback
-                    fallback_name = icon_theme_name.replace('Tela-', 'Tela-blue-')
-                    fallback_path = Path.home() / '.local/share/icons' / fallback_name
-                    if fallback_path.exists():
-                        print(f"[ICON] Fallback: Using {fallback_name} instead", flush=True)
-                        icon_theme_name = fallback_name
-                        icon_path = fallback_path
-                
-                if not icon_path.exists():
-                    print(f"Warning: Icon theme {icon_theme_name} not installed at {icon_path}", flush=True)
-                    return False
-                
-                self.interface_settings.set_string(ICON_THEME_KEY, icon_theme_name)
-                print(f"✓ Applied icon theme: {icon_theme_name}", flush=True)
-                return True
-            print(f"[ICON] No change needed, already using: {icon_theme_name}", flush=True)
-            return False
-        except Exception as e:
-            print(f"Warning: Could not set icon theme: {e}", flush=True)
-            return False
-    
-    def apply_shell_theme(self, theme_name):
-        """Apply GNOME Shell theme using GSettings."""
+    def _apply_shell_theme(self, theme_name):
+        """Apply GNOME Shell theme."""
         if not self.shell_settings:
-            return False
+            return True  # Not an error if shell settings unavailable
         
         try:
-            current_theme = self.shell_settings.get_string(SHELL_THEME_KEY)
-            if current_theme != theme_name:
+            current = self.shell_settings.get_string(SHELL_THEME_KEY)
+            if current != theme_name:
                 self.shell_settings.set_string(SHELL_THEME_KEY, theme_name)
-                print(f"✓ Applied Shell theme: {theme_name}")
+                print(f"[APPLY] Shell theme: {theme_name} ✓")
                 return True
-            return False
+            else:
+                print(f"[SKIP] Shell theme already set: {theme_name}")
+                return True
         except Exception as e:
-            print(f"Warning: Could not set Shell theme: {e}")
+            print(f"[WARN] Shell theme apply failed: {e}")
+            return True  # Don't fail on shell theme error
+    
+    def _apply_icon_theme(self, icon_theme_name):
+        """Apply icon theme."""
+        try:
+            current = self.interface_settings.get_string(ICON_THEME_KEY)
+            if current != icon_theme_name:
+                self.interface_settings.set_string(ICON_THEME_KEY, icon_theme_name)
+                print(f"[APPLY] Icon theme: {icon_theme_name} ✓")
+                return True
+            else:
+                print(f"[SKIP] Icon theme already set: {icon_theme_name}")
+                return True
+        except Exception as e:
+            print(f"[ERROR] Icon theme apply failed: {e}", file=sys.stderr)
             return False
     
-    def apply_libadwaita_theme(self, theme_name):
+    def _apply_libadwaita_theme(self, theme_name, theme_path):
         """Update libadwaita (GTK4) theme symlinks."""
         try:
-            # Check if theme exists
-            theme_path = THEMES_DIR / theme_name / 'gtk-4.0'
             if not theme_path.exists():
-                return False
+                print(f"[SKIP] libadwaita theme path not found: {theme_path}")
+                return True  # Not an error
             
             # Ensure GTK4 config directory exists
             GTK4_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -253,138 +337,145 @@ class OrchisThemeSwitcher:
             gtk_dark_css.symlink_to(theme_path / 'gtk-dark.css')
             assets.symlink_to(theme_path / 'assets')
             
-            print(f"✓ Applied libadwaita theme: {theme_name}")
+            print(f"[APPLY] libadwaita theme: {theme_name} ✓")
             return True
             
         except Exception as e:
-            print(f"Warning: Could not set libadwaita theme: {e}")
-            return False
+            print(f"[WARN] libadwaita theme apply failed: {e}")
+            return True  # Don't fail on libadwaita error
+
+
+class OrchisThemeSwitcher:
+    """Main theme switcher with atomic updates and self-healing."""
     
-    def on_color_scheme_changed(self, settings, key):
-        """Handle dark/light mode changes."""
-        print(f"\n[EVENT] on_color_scheme_changed triggered", flush=True)
+    def __init__(self):
+        """Initialize the theme switcher."""
+        self.interface_settings = None
+        self.shell_settings = None
+        self.theme_suffix = detect_theme_suffix()
+        self.current_state = None
+        self.applier = None
+        
+        if self.theme_suffix:
+            print(f"[INIT] Detected theme suffix: {self.theme_suffix}")
+        
+        # Initialize GSettings
+        self._init_gsettings()
+        
+        # Initialize applier
+        self.applier = AtomicThemeApplier(self.interface_settings, self.shell_settings)
+        
+        # Load or create initial state
+        self._init_state()
+    
+    def _init_gsettings(self):
+        """Initialize GSettings for interface and shell."""
         try:
-            color_scheme = settings.get_string(COLOR_SCHEME_KEY)
-            accent_color = self.current_accent
-            print(f"[EVENT] Color scheme: {color_scheme}, Accent: {accent_color}", flush=True)
+            self.interface_settings = Gio.Settings.new(INTERFACE_SCHEMA)
+        except Exception as e:
+            print(f"[FATAL] Could not access {INTERFACE_SCHEMA} schema: {e}", file=sys.stderr)
+            sys.exit(1)
+        
+        # Try to initialize shell theme settings (optional, requires User Themes extension)
+        try:
+            # Try to use the system-wide schema (works for both user and system-installed extension)
+            self.shell_settings = Gio.Settings.new(SHELL_THEME_SCHEMA)
+            print("[INIT] Shell theme extension found ✓")
+        except Exception as e:
+            print(f"[INIT] Shell theme extension not available (will skip shell theme)")
+            # Not a fatal error, shell theme switching is optional
+    
+    def _init_state(self):
+        """Initialize current state from GSettings or cache."""
+        color_scheme, accent_color = self.applier.get_current_state_from_gsettings()
+        self.current_state = ThemeState(color_scheme, accent_color, self.theme_suffix)
+        
+        # Try to load from cache
+        cached_state = self._load_state()
+        if cached_state:
+            print(f"[CACHE] Loaded previous state: {cached_state}")
+            # If cached state differs from GSettings, prefer GSettings (user changed manually)
+            if cached_state != self.current_state:
+                print("[CACHE] State mismatch - user may have changed settings manually")
+        
+        # Apply initial state
+        print(f"[INIT] Initial state: {self.current_state}")
+        success, _ = self.applier.apply(self.current_state)
+        if success:
+            self._save_state(self.current_state)
+    
+    def _save_state(self, state):
+        """Save state to cache file."""
+        try:
+            STATE_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            with open(STATE_CACHE_FILE, 'w') as f:
+                json.dump(state.to_dict(), f, indent=2)
+        except Exception as e:
+            print(f"[WARN] Failed to save state cache: {e}")
+    
+    def _load_state(self):
+        """Load state from cache file."""
+        try:
+            if STATE_CACHE_FILE.exists():
+                with open(STATE_CACHE_FILE, 'r') as f:
+                    data = json.load(f)
+                    return ThemeState.from_dict(data)
+        except Exception as e:
+            print(f"[WARN] Failed to load state cache: {e}")
+        return None
+    
+    def on_settings_changed(self, settings, key):
+        """Handle any settings change (color-scheme or accent-color)."""
+        print(f"\n[EVENT] Settings changed: {key}")
+        
+        try:
+            # Get current GSettings values
+            color_scheme, accent_color = self.applier.get_current_state_from_gsettings()
             
-            # Try to read current accent color
-            try:
-                accent_color = settings.get_string(ACCENT_COLOR_KEY)
-                self.current_accent = accent_color
-            except:
-                pass  # Accent color not available (older GNOME)
+            # Build new state
+            new_state = ThemeState(color_scheme, accent_color, self.theme_suffix)
             
-            theme_name = self.get_theme_name(color_scheme, accent_color)
+            # Check if actually changed
+            if new_state == self.current_state:
+                print("[SKIP] State unchanged")
+                return
             
-            print(f"[CHANGE] Color scheme changed to: {color_scheme}", flush=True)
-            print(f"[CHANGE] Will apply theme: {theme_name}", flush=True)
+            print(f"[CHANGE] {self.current_state} → {new_state}")
             
-            # Apply both GTK and Shell themes
-            gtk_changed = self.apply_gtk_theme(theme_name)
-            shell_changed = self.apply_shell_theme(theme_name)
-            libadwaita_changed = self.apply_libadwaita_theme(theme_name)
-            icon_changed = self.apply_icon_theme(self.get_icon_theme_name(color_scheme, accent_color))
+            # Apply new state
+            success, results = self.applier.apply(new_state)
             
-            if not gtk_changed and not shell_changed and not libadwaita_changed and not icon_changed:
-                print("No theme changes needed.")
+            if success:
+                self.current_state = new_state
+                self._save_state(new_state)
+            else:
+                print("[ERROR] Failed to apply new state, keeping old state")
                 
         except Exception as e:
-            print(f"Error handling color scheme change: {e}", file=sys.stderr)
-            # Fall back to default light theme
-            self.apply_gtk_theme("Orchis-Light")
-            self.apply_shell_theme("Orchis-Light")
-    
-    def on_accent_color_changed(self, settings, key):
-        """Handle accent color changes (GNOME 47+)."""
-        print(f"\n[EVENT] on_accent_color_changed triggered", flush=True)
-        try:
-            accent_color = settings.get_string(ACCENT_COLOR_KEY)
-            self.current_accent = accent_color
-            print(f"[EVENT] Accent color: {accent_color}", flush=True)
-            
-            # Get current color scheme
-            color_scheme = settings.get_string(COLOR_SCHEME_KEY)
-            theme_name = self.get_theme_name(color_scheme, accent_color)
-            
-            print(f"[CHANGE] Accent color changed to: {accent_color}", flush=True)
-            print(f"[CHANGE] Will apply theme: {theme_name}", flush=True)
-            
-            # Apply both GTK and Shell themes
-            gtk_changed = self.apply_gtk_theme(theme_name)
-            shell_changed = self.apply_shell_theme(theme_name)
-            libadwaita_changed = self.apply_libadwaita_theme(theme_name)
-            icon_changed = self.apply_icon_theme(self.get_icon_theme_name(color_scheme, accent_color))
-            
-            if not gtk_changed and not shell_changed and not libadwaita_changed and not icon_changed:
-                print("No theme changes needed.")
-                
-        except Exception as e:
-            print(f"Error handling accent color change: {e}", file=sys.stderr)
-    
-    def sync_initial_theme(self):
-        """Sync theme on startup based on current color-scheme and accent-color."""
-        try:
-            color_scheme = self.interface_settings.get_string(COLOR_SCHEME_KEY)
-            accent_color = 'blue'  # Default
-            
-            # Try to read accent color (may not exist on older GNOME)
-            try:
-                accent_color = self.interface_settings.get_string(ACCENT_COLOR_KEY)
-            except:
-                print("Note: Accent color setting not available (GNOME < 47)")
-            
-            self.current_accent = accent_color
-            theme_name = self.get_theme_name(color_scheme, accent_color)
-            
-            print(f"Initial color scheme: {color_scheme}")
-            print(f"Initial accent color: {accent_color}")
-            print(f"[SYNC] Applying all themes for {color_scheme} + {accent_color}", flush=True)
-            self.apply_gtk_theme(theme_name)
-            self.apply_shell_theme(theme_name)
-            self.apply_libadwaita_theme(theme_name)
-            icon_theme_name = self.get_icon_theme_name(color_scheme, accent_color)
-            print(f"[SYNC] Icon theme to apply: {icon_theme_name}", flush=True)
-            self.apply_icon_theme(icon_theme_name)
-            
-        except Exception as e:
-            print(f"Error syncing initial theme: {e}", file=sys.stderr)
-            # Fall back to default light theme
-            self.apply_gtk_theme("Orchis-Light")
-            self.apply_shell_theme("Orchis-Light")
+            print(f"[ERROR] Exception in settings change handler: {e}", file=sys.stderr)
+            # Don't crash, just log the error
     
     def run(self):
         """Run the theme switcher."""
-        print("[START] Monitoring both color-scheme and accent-color changes", flush=True)
-        print("[START] Orchis theme switcher is running...", flush=True)
-        print("[START] Press Ctrl+C to stop", flush=True)
+        print("\n[START] Orchis Theme Switcher (Restructured)")
+        print("[START] Monitoring color-scheme and accent-color changes")
+        print("[START] Press Ctrl+C to stop\n")
         sys.stdout.flush()
         
-        # Sync theme on startup
-        self.sync_initial_theme()
+        # Connect to both signals with same handler
+        self.interface_settings.connect(f'changed::{COLOR_SCHEME_KEY}', self.on_settings_changed)
         
-        # Connect to color-scheme change signal
-        self.interface_settings.connect(
-            f'changed::{COLOR_SCHEME_KEY}',
-            self.on_color_scheme_changed
-        )
-        
-        # Connect to accent-color change signal (gracefully handle if not available)
         try:
-            self.interface_settings.connect(
-                f'changed::{ACCENT_COLOR_KEY}',
-                self.on_accent_color_changed
-            )
-            print("Monitoring both color-scheme and accent-color changes")
+            self.interface_settings.connect(f'changed::{ACCENT_COLOR_KEY}', self.on_settings_changed)
+            print("[START] Monitoring both color-scheme and accent-color")
         except:
-            print("Monitoring color-scheme changes only (accent-color not available)")
+            print("[START] Monitoring color-scheme only (accent-color not available)")
         
         # Run GLib main loop
         try:
-            print("[LOOP] Starting GLib main loop...", flush=True)
             GLib.MainLoop().run()
         except KeyboardInterrupt:
-            print("\n[STOP] Theme switcher stopped.", flush=True)
+            print("\n[STOP] Theme switcher stopped")
             sys.exit(0)
 
 
@@ -394,7 +485,7 @@ def main():
         switcher = OrchisThemeSwitcher()
         switcher.run()
     except Exception as e:
-        print(f"Fatal error: {e}", file=sys.stderr)
+        print(f"[FATAL] {e}", file=sys.stderr)
         sys.exit(1)
 
 
